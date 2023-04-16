@@ -96,6 +96,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                         }
                     }
                 });
+        LOGGER.info("Accepted answer: {}.", answer.toString());
         SendMessage answerMessage = new SendMessage();
         answerMessage.setChatId(String.valueOf(acceptedUserId));
         answerMessage.setText(answer.toString());
