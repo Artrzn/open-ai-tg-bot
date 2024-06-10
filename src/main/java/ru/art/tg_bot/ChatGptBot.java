@@ -28,26 +28,20 @@ public class ChatGptBot extends TelegramLongPollingBot {
 
     private final OpenAiService openAi;
     private final long ownerUserId;
-    private final String botToken;
     private final String botUserName;
     private static final List<String> AVAILABLE_MODELS = List.of("gpt-3.5-turbo", "gpt-4o");
     private String actualModel = AVAILABLE_MODELS.get(0);
 
     public ChatGptBot(OpenAiService openAi, long ownerUserId, String botToken, String botUserName) {
+        super(botToken);
         this.openAi = openAi;
         this.ownerUserId = ownerUserId;
-        this.botToken = botToken;
         this.botUserName = botUserName;
     }
 
     @Override
     public String getBotUsername() {
         return botUserName;
-    }
-
-    @Override
-    public String getBotToken() {
-        return botToken;
     }
 
     public void onUpdateReceived(Update update) {
