@@ -1,4 +1,4 @@
-package ru.art;
+package ru.art.tg_bot;
 
 import com.theokanning.openai.completion.chat.ChatCompletionChoice;
 import com.theokanning.openai.completion.chat.ChatCompletionRequest;

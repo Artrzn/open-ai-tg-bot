@@ -1,10 +1,10 @@
-package ru.art.config;
+package ru.art.tg_bot.config;
 
 import com.theokanning.openai.service.OpenAiService;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
-import ru.art.ChatGptBot;
+import ru.art.tg_bot.ChatGptBot;
 
 import java.time.Duration;
 

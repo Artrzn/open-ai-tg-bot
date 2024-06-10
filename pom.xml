@@ -55,7 +55,7 @@
                         </goals>
                         <configuration>
                             <classifier>spring-boot</classifier>
-                            <mainClass>ru.art.Main</mainClass>
+                            <mainClass>ru.art.tg_bot.Main</mainClass>
                         </configuration>
                     </execution>
                 </executions>
