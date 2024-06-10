@@ -9,13 +9,16 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
+import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
 import org.telegram.telegrambots.meta.api.objects.Message;
 import org.telegram.telegrambots.meta.api.objects.Update;
 import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
+import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 
@@ -23,70 +26,97 @@ public class ChatGptBot extends TelegramLongPollingBot {
 
     private final static Logger LOGGER = LogManager.getLogger(ChatGptBot.class);
 
-    private OpenAiService service;
-    private long acceptedUserId;
-    private String token;
-    private String userName;
+    private final OpenAiService openAi;
+    private final long ownerUserId;
+    private final String botToken;
+    private final String botUserName;
+    private static final List<String> AVAILABLE_MODELS = List.of("gpt-3.5-turbo", "gpt-4o");
+    private String actualModel = AVAILABLE_MODELS.get(0);
 
-    public ChatGptBot(String openAiKey, long acceptedUserId, String token, String userName) {
-        this.service = new OpenAiService(openAiKey, Duration.ofSeconds(60));
-        this.acceptedUserId = acceptedUserId;
-        this.token = token;
-        this.userName = userName;
+    public ChatGptBot(OpenAiService openAi, long ownerUserId, String botToken, String botUserName) {
+        this.openAi = openAi;
+        this.ownerUserId = ownerUserId;
+        this.botToken = botToken;
+        this.botUserName = botUserName;
     }
 
     @Override
     public String getBotUsername() {
-        return userName;
+        return botUserName;
     }
 
     @Override
     public String getBotToken() {
-        return token;
+        return botToken;
     }
 
-
-    @Override
     public void onUpdateReceived(Update update) {
         Message message = update.getMessage();
-        User messageAuthor = message.getFrom();
-        Long userId = messageAuthor.getId();
-        if (acceptedUserId == userId) {
-            String question = message.getText();
-            LOGGER.info("Accepted question: \"{}\"", question);
-            SendMessage waitMessage = new SendMessage();
-            waitMessage.setChatId(String.valueOf(acceptedUserId));
-            waitMessage.setText("Жди...");
-            sendMessage(waitMessage);
-            sendAnswer(question);
-        } else {
-            LOGGER.info("Accepted request from unauthorized user: {}. Request: {}.", userId, message.getText());
-            SendMessage unauthorizedMessage = new SendMessage();
-            unauthorizedMessage.setChatId(String.valueOf(acceptedUserId));
-            unauthorizedMessage.setText("Это частная вечеринка.");
-            sendMessage(unauthorizedMessage);
+        CallbackQuery callbackQuery = update.getCallbackQuery();
+        if (message != null) {
+            User messageAuthor = message.getFrom();
+            Long userId = messageAuthor.getId();
+            if (ownerUserId == userId) {
+                String text = message.getText();
+                LOGGER.info("Accepted text message: \"{}\"", text);
+                if (message.isCommand() && text.equals("/choose_model")) {
+                    changeModel();
+                } else if (message.isCommand() && text.startsWith("/")) {
+                    sendTextMessage(String.format("Не поддерживаемая команда: %s\n ヽ(°□° )ノ", text));
+                } else {
+                    askOpenAi(text);
+                }
+            } else {
+                LOGGER.info("Accepted request from unauthorized user: {}. Request: {}", userId, message.getText());
+                sendTextMessage("Это частная вечеринка\n ヽ(°□° )ノ");
+            }
+        } else if (callbackQuery != null) {
+            String chosenModel = callbackQuery.getData();
+            LOGGER.info("Chosen model: {}", chosenModel);
+            actualModel = chosenModel;
+            sendTextMessage(String.format("Выбрана модель: %s", actualModel));
         }
     }
 
-    private void sendAnswer(String question) {
+    private void changeModel() {
+        sendMessage(SendMessage.builder()
+                .chatId(ownerUserId)
+                .text("Выбери модель")
+                .replyMarkup(InlineKeyboardMarkup
+                        .builder()
+                        .keyboardRow(Arrays.asList(InlineKeyboardButton
+                                        .builder()
+                                        .text(AVAILABLE_MODELS.get(0))
+                                        .callbackData(AVAILABLE_MODELS.get(0))
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text(AVAILABLE_MODELS.get(1))
+                                        .callbackData(AVAILABLE_MODELS.get(1))
+                                        .build())
+                        )
+                        .build())
+                .build());
+    }
+
+    private void askOpenAi(String ask) {
+        sendTextMessage(String.format("Жди... использована модель: %s", actualModel));
+
         List<ChatMessage> messages = new ArrayList<>();
-        ChatMessage systemMessage = new ChatMessage(ChatMessageRole.SYSTEM.value(), question);
+        ChatMessage systemMessage = new ChatMessage(ChatMessageRole.SYSTEM.value(), ask);
         messages.add(systemMessage);
         ChatCompletionRequest chatCompletionRequest = ChatCompletionRequest
                 .builder()
-                .model("gpt-3.5-turbo")
+                .model(actualModel)
                 .messages(messages)
                 .n(1)
                 .logitBias(new HashMap<>())
                 .build();
         StringBuilder answer = new StringBuilder();
-        service.streamChatCompletion(chatCompletionRequest)
+        openAi.streamChatCompletion(chatCompletionRequest)
                 .doOnError(throwable -> {
-                    LOGGER.error("Error while get answer from apenAi.", throwable);
-                    SendMessage errorMessage = new SendMessage();
-                    errorMessage.setChatId(String.valueOf(acceptedUserId));
-                    errorMessage.setText(String.format("Ошибка выполнения запроса к openAi. %s", throwable.getMessage()));
-                    sendMessage(errorMessage);
+                    LOGGER.error("Error while get answer from apenAi", throwable);
+                    sendTextMessage(String.format("Ошибка выполнения запроса к openAi. %s", throwable.getMessage()));
                 })
                 .blockingForEach(chatCompletionChunk -> {
                     List<ChatCompletionChoice> choices = chatCompletionChunk.getChoices();
@@ -96,11 +126,16 @@ public class ChatGptBot extends TelegramLongPollingBot {
                         }
                     }
                 });
-        LOGGER.info("Accepted answer: {}.", answer.toString());
-        SendMessage answerMessage = new SendMessage();
-        answerMessage.setChatId(String.valueOf(acceptedUserId));
-        answerMessage.setText(answer.toString());
-        sendMessage(answerMessage);
+        LOGGER.info("Accepted answer: {}", answer.toString());
+
+        sendTextMessage(answer.toString());
+    }
+
+    private void sendTextMessage(String text) {
+        sendMessage(SendMessage.builder()
+                .chatId(ownerUserId)
+                .text(text)
+                .build());
     }
 
     private void sendMessage(SendMessage message) {
@@ -110,5 +145,4 @@ public class ChatGptBot extends TelegramLongPollingBot {
             throw new RuntimeException(e);
         }
     }
-
 }
