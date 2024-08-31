@@ -48,47 +48,51 @@ public class ChatGptBot extends TelegramLongPollingBot {
     }
 
     public void onUpdateReceived(Update update) {
-        Message message = update.getMessage();
-        CallbackQuery callbackQuery = update.getCallbackQuery();
-        if (message != null) {
-            User messageAuthor = message.getFrom();
-            Long userId = messageAuthor.getId();
-            if (ownerUserId == userId) {
-                String text = message.getText();
-                LOGGER.info("Accepted text message: \"{}\"", text);
-                if (message.isCommand() && text.equals("/choose_model")) {
-                    changeModel();
-                } else if (message.isCommand() && text.equals("/choose_context_mode")) {
-                    changeContextMode();
-                } else if (message.isCommand() && text.startsWith("/")) {
-                    sendTextMessage(String.format("Не поддерживаемая команда: %s\n ヽ(°□° )ノ", text));
+        try {
+            Message message = update.getMessage();
+            CallbackQuery callbackQuery = update.getCallbackQuery();
+            if (message != null) {
+                User messageAuthor = message.getFrom();
+                Long userId = messageAuthor.getId();
+                if (ownerUserId == userId) {
+                    String text = message.getText();
+                    LOGGER.info("Accepted text message: \"{}\"", text);
+                    if (message.isCommand() && text.equals("/choose_model")) {
+                        changeModel();
+                    } else if (message.isCommand() && text.equals("/choose_context_mode")) {
+                        changeContextMode();
+                    } else if (message.isCommand() && text.startsWith("/")) {
+                        sendTextMessage(String.format("Не поддерживаемая команда: %s\n ヽ(°□° )ノ", text));
+                    } else {
+                        askOpenAi(text);
+                    }
                 } else {
-                    askOpenAi(text);
+                    LOGGER.info("Accepted request from unauthorized user: {}. Request: {}", userId, message.getText());
+                    sendTextMessage("Это частная вечеринка\n ヽ(°□° )ノ");
                 }
-            } else {
-                LOGGER.info("Accepted request from unauthorized user: {}. Request: {}", userId, message.getText());
-                sendTextMessage("Это частная вечеринка\n ヽ(°□° )ノ");
-            }
-        } else if (callbackQuery != null) {
-            String callbackData = callbackQuery.getData();
-            if (callbackData.equals("true") || callbackData.equals("false")) {
-                boolean newState = Boolean.parseBoolean(callbackData);
-                if (isUseContext && !newState) {
-                    savedMessages.clear();
-                    LOGGER.info("Clear messages");
+            } else if (callbackQuery != null) {
+                String callbackData = callbackQuery.getData();
+                if (callbackData.equals("true") || callbackData.equals("false")) {
+                    boolean newState = Boolean.parseBoolean(callbackData);
+                    if (isUseContext && !newState) {
+                        savedMessages.clear();
+                        LOGGER.info("Clear messages");
+                    }
+                    isUseContext = newState;
+                    LOGGER.info("Context support state was change to: {}. Chosen model: {}", isUseContext, actualModel);
+                    sendTextMessage(String.format("Поддержка контекста: %s. Выбранная модель: %s", isUseContext, actualModel));
+                } else {
+                    LOGGER.info("Chosen model: {}. Context support: {}", callbackData, isUseContext);
+                    actualModel = callbackData;
+                    sendTextMessage(String.format("Выбрана модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
                 }
-                isUseContext = newState;
-                LOGGER.info("Context support state was change to: {}. Chosen model: {}", isUseContext, actualModel);
-                sendTextMessage(String.format("Поддержка контекста: %s. Выбранная модель: %s", isUseContext, actualModel));
-            } else {
-                LOGGER.info("Chosen model: {}. Context support: {}", callbackData, isUseContext);
-                actualModel = callbackData;
-                sendTextMessage(String.format("Выбрана модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
             }
+        } catch (Throwable t) {
+            LOGGER.error("Some error: ", t);
         }
     }
 
-    private void changeModel() {
+    private void changeModel() throws TelegramApiException {
         sendMessage(SendMessage.builder()
                 .chatId(ownerUserId)
                 .text("Выбери модель")
@@ -109,7 +113,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .build());
     }
 
-    private void changeContextMode() {
+    private void changeContextMode() throws TelegramApiException {
         sendMessage(SendMessage.builder()
                 .chatId(ownerUserId)
                 .text("Чат с поддержкой контекста или нет")
@@ -130,7 +134,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .build());
     }
 
-    private void askOpenAi(String ask) {
+    private void askOpenAi(String ask) throws TelegramApiException {
         sendTextMessage(String.format("Жди... использована модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
 
         List<ChatMessage> messages = isUseContext ? savedMessages : new ArrayList<>();
@@ -162,7 +166,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
         sendTextMessage(answer.toString());
     }
 
-    private void sendTextMessage(String text) {
+    private void sendTextMessage(String text) throws TelegramApiException {
         sendMessage(SendMessage.builder()
                 .chatId(ownerUserId)
                 .parseMode(ParseMode.MARKDOWNV2)
@@ -178,11 +182,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
         return text;
     }
 
-    private void sendMessage(SendMessage message) {
-        try {
-            execute(message);
-        } catch (TelegramApiException e) {
-            throw new RuntimeException(e);
-        }
+    private void sendMessage(SendMessage message) throws TelegramApiException {
+        execute(message);
     }
 }
