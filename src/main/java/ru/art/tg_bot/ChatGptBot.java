@@ -32,6 +32,8 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private final String botUserName;
     private static final List<String> AVAILABLE_MODELS = List.of("gpt-3.5-turbo", "gpt-4o");
     private String actualModel = AVAILABLE_MODELS.get(0);
+    private boolean isUseContext;
+    private List<ChatMessage> savedMessages = new ArrayList<>();
 
     public ChatGptBot(OpenAiService openAi, long ownerUserId, String botToken, String botUserName) {
         super(botToken);
@@ -56,6 +58,8 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 LOGGER.info("Accepted text message: \"{}\"", text);
                 if (message.isCommand() && text.equals("/choose_model")) {
                     changeModel();
+                } else if (message.isCommand() && text.equals("/choose_context_mode")) {
+                    changeContextMode();
                 } else if (message.isCommand() && text.startsWith("/")) {
                     sendTextMessage(String.format("Не поддерживаемая команда: %s\n ヽ(°□° )ノ", text));
                 } else {
@@ -66,10 +70,20 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 sendTextMessage("Это частная вечеринка\n ヽ(°□° )ノ");
             }
         } else if (callbackQuery != null) {
-            String chosenModel = callbackQuery.getData();
-            LOGGER.info("Chosen model: {}", chosenModel);
-            actualModel = chosenModel;
-            sendTextMessage(String.format("Выбрана модель: %s", actualModel));
+            String callbackData = callbackQuery.getData();
+            if (callbackData.equals("true") || callbackData.equals("false")) {
+                boolean newState = Boolean.parseBoolean(callbackData);
+                if (isUseContext && !newState) {
+                    savedMessages.clear();
+                    LOGGER.info("Clear messages");
+                }
+                LOGGER.info("Context support state was change to: {}. Chosen model: {}", isUseContext, actualModel);
+                sendTextMessage(String.format("Поддержка контекста: %s. Выбранная модель: %s", isUseContext, actualModel));
+            } else {
+                LOGGER.info("Chosen model: {}. Context support: {}", callbackData, isUseContext);
+                actualModel = callbackData;
+                sendTextMessage(String.format("Выбрана модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
+            }
         }
     }
 
@@ -94,10 +108,31 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .build());
     }
 
-    private void askOpenAi(String ask) {
-        sendTextMessage(String.format("Жди... использована модель: %s", actualModel));
+    private void changeContextMode() {
+        sendMessage(SendMessage.builder()
+                .chatId(ownerUserId)
+                .text("Чат с поддержкой контекста или нет")
+                .replyMarkup(InlineKeyboardMarkup
+                        .builder()
+                        .keyboardRow(Arrays.asList(InlineKeyboardButton
+                                        .builder()
+                                        .text("Контекст включен")
+                                        .callbackData("true")
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text("Контекст выключен")
+                                        .callbackData("false")
+                                        .build())
+                        )
+                        .build())
+                .build());
+    }
 
-        List<ChatMessage> messages = new ArrayList<>();
+    private void askOpenAi(String ask) {
+        sendTextMessage(String.format("Жди... использована модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
+
+        List<ChatMessage> messages = isUseContext ? savedMessages : new ArrayList<>();
         ChatMessage systemMessage = new ChatMessage(ChatMessageRole.SYSTEM.value(), ask);
         messages.add(systemMessage);
         ChatCompletionRequest chatCompletionRequest = ChatCompletionRequest
