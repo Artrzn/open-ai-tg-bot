@@ -166,8 +166,16 @@ public class ChatGptBot extends TelegramLongPollingBot {
         sendMessage(SendMessage.builder()
                 .chatId(ownerUserId)
                 .parseMode(ParseMode.MARKDOWNV2)
-                .text(text)
+                .text(escapeMarkdown(text))
                 .build());
+    }
+
+    private String escapeMarkdown(String text) {
+        String[] specialChars = {"\\", "_", "*", "[", "]", "(", ")", "~", ">", "#", "+", "-", "=", "|", "{", "}", ".", "!"};
+        for (String specialChar : specialChars) {
+            text = text.replace(specialChar, "\\" + specialChar);
+        }
+        return text;
     }
 
     private void sendMessage(SendMessage message) {
