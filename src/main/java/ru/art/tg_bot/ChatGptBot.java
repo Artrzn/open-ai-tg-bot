@@ -33,7 +33,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private static final List<String> AVAILABLE_MODELS = List.of("gpt-3.5-turbo", "gpt-4o");
     private String actualModel = AVAILABLE_MODELS.get(0);
     private boolean isUseContext;
-    private List<ChatMessage> savedMessages = new ArrayList<>();
+    private final List<ChatMessage> savedMessages = new ArrayList<>();
 
     public ChatGptBot(OpenAiService openAi, long ownerUserId, String botToken, String botUserName) {
         super(botToken);
@@ -77,6 +77,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                     savedMessages.clear();
                     LOGGER.info("Clear messages");
                 }
+                isUseContext = newState;
                 LOGGER.info("Context support state was change to: {}. Chosen model: {}", isUseContext, actualModel);
                 sendTextMessage(String.format("Поддержка контекста: %s. Выбранная модель: %s", isUseContext, actualModel));
             } else {
