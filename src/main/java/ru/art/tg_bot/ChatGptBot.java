@@ -10,10 +10,7 @@ import org.apache.logging.log4j.Logger;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.ParseMode;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
-import org.telegram.telegrambots.meta.api.objects.CallbackQuery;
-import org.telegram.telegrambots.meta.api.objects.Message;
-import org.telegram.telegrambots.meta.api.objects.Update;
-import org.telegram.telegrambots.meta.api.objects.User;
+import org.telegram.telegrambots.meta.api.objects.*;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMarkup;
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
@@ -22,6 +19,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
+import java.util.function.Function;
 
 public class ChatGptBot extends TelegramLongPollingBot {
 
@@ -31,8 +29,10 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private final long ownerUserId;
     private final String botUserName;
     private static final List<String> AVAILABLE_MODELS = List.of("gpt-3.5-turbo", "gpt-4o");
-    private String actualModel = AVAILABLE_MODELS.get(0);
+    private int actualModelIndex = 0;
     private boolean isUseContext;
+    private final Function<Boolean, String> getContextState = b -> b ? "On" : "Off";
+    private String actualRole = ChatMessageRole.USER.value();
     private final List<ChatMessage> savedMessages = new ArrayList<>();
 
     public ChatGptBot(OpenAiService openAi, long ownerUserId, String botToken, String botUserName) {
@@ -61,6 +61,8 @@ public class ChatGptBot extends TelegramLongPollingBot {
                         changeModel();
                     } else if (message.isCommand() && text.equals("/choose_context_mode")) {
                         changeContextMode();
+                    } else if (message.isCommand() && text.equals("/choose_role")) {
+                        changeRole();
                     } else if (message.isCommand() && text.startsWith("/")) {
                         sendTextMessage(String.format("Не поддерживаемая команда: %s\n ヽ(°□° )ノ", text));
                     } else {
@@ -74,18 +76,22 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 String callbackData = callbackQuery.getData();
                 if (callbackData.equals("true") || callbackData.equals("false")) {
                     boolean newState = Boolean.parseBoolean(callbackData);
-                    if (isUseContext && !newState) {
-                        savedMessages.clear();
-                        LOGGER.info("Clear messages");
+                    if (isUseContext != newState) {
+                        LOGGER.info("Context support state was change from: {} to: {}", getContextState.apply(isUseContext), getContextState.apply(newState));
                     }
+                    LOGGER.info("Clear messages");
+                    savedMessages.clear();
                     isUseContext = newState;
-                    LOGGER.info("Context support state was change to: {}. Chosen model: {}", isUseContext, actualModel);
-                    sendTextMessage(String.format("Поддержка контекста: %s. Выбранная модель: %s", isUseContext, actualModel));
+                } else if (callbackData.equals("system") || callbackData.equals("user")) {
+                    if (!actualRole.equals(callbackData)) {
+                        LOGGER.info("Role was change from: {} to: {}.", actualRole, callbackData);
+                    }
+                    actualRole = callbackData;
                 } else {
-                    LOGGER.info("Chosen model: {}. Context support: {}", callbackData, isUseContext);
-                    actualModel = callbackData;
-                    sendTextMessage(String.format("Выбрана модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
+                    actualModelIndex = Integer.parseInt(callbackData);
+                    LOGGER.info("Chosen model: {}.", AVAILABLE_MODELS.get(actualModelIndex));
                 }
+                sendTextMessage(String.format("Режим контекста: %s. Роль: %s. Выбранная модель: %s", getContextState.apply(isUseContext), actualRole, AVAILABLE_MODELS.get(actualModelIndex)));
             }
         } catch (Throwable t) {
             LOGGER.error("Some error: ", t);
@@ -101,12 +107,12 @@ public class ChatGptBot extends TelegramLongPollingBot {
                         .keyboardRow(Arrays.asList(InlineKeyboardButton
                                         .builder()
                                         .text(AVAILABLE_MODELS.get(0))
-                                        .callbackData(AVAILABLE_MODELS.get(0))
+                                        .callbackData("0")
                                         .build(),
                                 InlineKeyboardButton
                                         .builder()
                                         .text(AVAILABLE_MODELS.get(1))
-                                        .callbackData(AVAILABLE_MODELS.get(1))
+                                        .callbackData("1")
                                         .build())
                         )
                         .build())
@@ -116,17 +122,17 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private void changeContextMode() throws TelegramApiException {
         sendMessage(SendMessage.builder()
                 .chatId(ownerUserId)
-                .text("Чат с поддержкой контекста или нет")
+                .text("Выбор режима контекста")
                 .replyMarkup(InlineKeyboardMarkup
                         .builder()
                         .keyboardRow(Arrays.asList(InlineKeyboardButton
                                         .builder()
-                                        .text("Контекст включен")
+                                        .text("On")
                                         .callbackData("true")
                                         .build(),
                                 InlineKeyboardButton
                                         .builder()
-                                        .text("Контекст выключен")
+                                        .text("Off")
                                         .callbackData("false")
                                         .build())
                         )
@@ -134,15 +140,37 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .build());
     }
 
+    private void changeRole() throws TelegramApiException {
+        sendMessage(SendMessage.builder()
+                .chatId(ownerUserId)
+                .text("Выбор роли")
+                .replyMarkup(InlineKeyboardMarkup
+                        .builder()
+                        .keyboardRow(Arrays.asList(InlineKeyboardButton
+                                        .builder()
+                                        .text(ChatMessageRole.SYSTEM.value())
+                                        .callbackData(ChatMessageRole.SYSTEM.value())
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text(ChatMessageRole.USER.value())
+                                        .callbackData(ChatMessageRole.USER.value())
+                                        .build())
+                        )
+                        .build())
+                .build());
+    }
+
     private void askOpenAi(String ask) throws TelegramApiException {
-        sendTextMessage(String.format("Жди... использована модель: %s. Поддержка контекста: %s", actualModel, isUseContext));
+        String model = AVAILABLE_MODELS.get(actualModelIndex);
+        sendTextMessage(String.format("Жди... использована модель: %s. Режим контекста: %s. Роль: %s.", model, getContextState.apply(isUseContext), actualRole));
 
         List<ChatMessage> messages = isUseContext ? savedMessages : new ArrayList<>();
-        ChatMessage systemMessage = new ChatMessage(ChatMessageRole.SYSTEM.value(), ask);
-        messages.add(systemMessage);
+        ChatMessage userMessage = new ChatMessage(actualRole, ask);
+        messages.add(userMessage);
         ChatCompletionRequest chatCompletionRequest = ChatCompletionRequest
                 .builder()
-                .model(actualModel)
+                .model(model)
                 .messages(messages)
                 .n(1)
                 .logitBias(new HashMap<>())
@@ -156,13 +184,16 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .blockingForEach(chatCompletionChunk -> {
                     List<ChatCompletionChoice> choices = chatCompletionChunk.getChoices();
                     for (ChatCompletionChoice choice : choices) {
-                        if (choice.getMessage().getContent() != null) {
+                        ChatMessage assistantMessage = choice.getMessage();
+                        if (assistantMessage.getContent() != null) {
                             answer.append(choice.getMessage().getContent());
                         }
                     }
                 });
         LOGGER.info("Accepted answer: {}", answer.toString());
-
+        if (isUseContext) {
+            messages.add(new ChatMessage(ChatMessageRole.ASSISTANT.value(), answer.toString()));
+        }
         sendTextMessage(answer.toString());
     }
 
