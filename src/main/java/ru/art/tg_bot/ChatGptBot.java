@@ -15,6 +15,7 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -96,7 +97,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                     LOGGER.info("Chosen model: {}.", actualModel.getName());
                 }
                 sendTextMessage(String.format("Режим контекста: %s. Роль: %s. Выбранная модель: %s%s", getContextState.apply(isUseContext),
-                        actualRole, actualModel.getName(), actualModel == Model.O3_MINI || actualModel == Model.O4_MINI ? "" : String.format(" Температура: %s.", temperature)));
+                        actualRole, actualModel.getName(), actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? "" : String.format(" Температура: %s.", temperature)));
             }
         } catch (Throwable t) {
             LOGGER.error("Some error: ", t);
@@ -111,28 +112,23 @@ public class ChatGptBot extends TelegramLongPollingBot {
                         .builder()
                         .keyboardRow(Arrays.asList(InlineKeyboardButton
                                         .builder()
-                                        .text(Model.GPT_3_5_TURBO.getName())
-                                        .callbackData(Model.GPT_3_5_TURBO.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.O3_MINI.getName())
-                                        .callbackData(Model.O3_MINI.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.O4_MINI.getName())
-                                        .callbackData(Model.O4_MINI.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.GPT_4O.getName())
-                                        .callbackData(Model.GPT_4O.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
                                         .text(Model.GPT_4_1.getName())
                                         .callbackData(Model.GPT_4_1.getName())
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text(Model.GPT_5_MINI.getName())
+                                        .callbackData(Model.GPT_5_MINI.getName())
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text(Model.GPT_5.getName())
+                                        .callbackData(Model.GPT_5.getName())
+                                        .build(),
+                                InlineKeyboardButton
+                                        .builder()
+                                        .text(Model.GPT_5_CHAT.getName())
+                                        .callbackData(Model.GPT_5_CHAT.getName())
                                         .build())
                         )
                         .build())
@@ -253,7 +249,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
 
     private void askOpenAi(String ask) throws TelegramApiException {
         sendTextMessage(String.format("Жди... использована модель: %s. Режим контекста: %s. Роль: %s.%s", actualModel.getName(),
-                getContextState.apply(isUseContext), actualRole, actualModel == Model.O3_MINI || actualModel == Model.O4_MINI ? "" : String.format(" Температура: %s.", temperature)));
+                getContextState.apply(isUseContext), actualRole, actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? "" : String.format(" Температура: %s.", temperature)));
 
         List<ChatMessage> messages = isUseContext ? savedMessages : new ArrayList<>();
         ChatMessage userMessage = new ChatMessage(actualRole, ask);
@@ -286,17 +282,40 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .model(actualModel.getName())
                 .messages(messages)
                 .n(1)
-                .temperature(actualModel == Model.O3_MINI || actualModel == Model.O4_MINI ? null : temperature)
+                .temperature(actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? null : temperature)
                 .stream(false)
                 .build();
     }
 
     private void sendTextMessage(String text) throws TelegramApiException {
-        sendMessage(SendMessage.builder()
-                .chatId(ownerUserId)
-                .parseMode(ParseMode.MARKDOWNV2)
-                .text(escapeMarkdown(text))
-                .build());
+        String escapedText = escapeMarkdown(text);
+        int length = escapedText.length();
+        //todo экранирование и разметка не учтены
+        if (length <= 4096) {
+            sendMessage(SendMessage.builder()
+                    .chatId(ownerUserId)
+                    .parseMode(ParseMode.MARKDOWNV2)
+                    .text(escapedText)
+                    .build());
+        } else {
+            int index = 0;
+            while (index < length) {
+                if (length - (index + 4096) <= 0) {
+                    sendMessage(SendMessage.builder()
+                            .chatId(ownerUserId)
+//                            .parseMode(ParseMode.MARKDOWNV2)
+                            .text(escapedText.substring(index))
+                            .build());
+                } else {
+                    sendMessage(SendMessage.builder()
+                            .chatId(ownerUserId)
+//                            .parseMode(ParseMode.MARKDOWNV2)
+                            .text(escapedText.substring(index, index + 4096))
+                            .build());
+                }
+                index+=4096;
+            }
+        }
     }
 
     private String escapeMarkdown(String text) {

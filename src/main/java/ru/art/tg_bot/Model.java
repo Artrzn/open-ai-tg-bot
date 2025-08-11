@@ -1,11 +1,10 @@
 package ru.art.tg_bot;
 
 public enum Model {
-    GPT_3_5_TURBO("gpt-3.5-turbo"),
-    O3_MINI("o3-mini"),
-    GPT_4O("gpt-4o"),
-    O4_MINI("o4-mini"),
-    GPT_4_1("gpt-4.1");
+    GPT_4_1("gpt-4.1"),
+    GPT_5_MINI("gpt-5-mini"),
+    GPT_5("gpt-5"),
+    GPT_5_CHAT("gpt-5-chat-latest");
 
     private final String modelName;
 
@@ -19,16 +18,14 @@ public enum Model {
 
     static Model getByName(String modelName) {
         switch (modelName) {
-            case "gpt-3.5-turbo":
-                return GPT_3_5_TURBO;
-            case "o3-mini":
-                return O3_MINI;
-            case "gpt-4o":
-                return GPT_4O;
-            case "o4-mini":
-                return O4_MINI;
             case "gpt-4.1":
                 return GPT_4_1;
+                case "gpt-5-mini":
+                return GPT_5_MINI;
+                case "gpt-5":
+                return GPT_5;
+                case "gpt-5-chat-latest":
+                return GPT_5_CHAT;
             default:
                 return Model.valueOf(modelName);
         }
