@@ -15,7 +15,6 @@ import org.telegram.telegrambots.meta.api.objects.replykeyboard.InlineKeyboardMa
 import org.telegram.telegrambots.meta.api.objects.replykeyboard.buttons.InlineKeyboardButton;
 import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 
-import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -29,7 +28,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private final long ownerUserId;
     private final String botUserName;
     private double temperature = 0.7;
-    private Model actualModel = Model.GPT_4_1;
+    private Model actualModel = Model.GPT_5_2_CHAT;
     private boolean isUseContext;
     private final Function<Boolean, String> getContextState = b -> b ? "On" : "Off";
     private String actualRole = ChatMessageRole.USER.value();
@@ -97,7 +96,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                     LOGGER.info("Chosen model: {}.", actualModel.getName());
                 }
                 sendTextMessage(String.format("Режим контекста: %s. Роль: %s. Выбранная модель: %s%s", getContextState.apply(isUseContext),
-                        actualRole, actualModel.getName(), actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? "" : String.format(" Температура: %s.", temperature)));
+                        actualRole, actualModel.getName(), actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 || actualModel == Model.GPT_5_2_CHAT ? "" : String.format(" Температура: %s.", temperature)));
             }
         } catch (Throwable t) {
             LOGGER.error("Some error: ", t);
@@ -111,25 +110,26 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .replyMarkup(InlineKeyboardMarkup
                         .builder()
                         .keyboardRow(Arrays.asList(InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.GPT_4_1.getName())
-                                        .callbackData(Model.GPT_4_1.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.GPT_5_MINI.getName())
-                                        .callbackData(Model.GPT_5_MINI.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.GPT_5.getName())
-                                        .callbackData(Model.GPT_5.getName())
-                                        .build(),
-                                InlineKeyboardButton
-                                        .builder()
-                                        .text(Model.GPT_5_CHAT.getName())
-                                        .callbackData(Model.GPT_5_CHAT.getName())
-                                        .build())
+                                                .builder()
+                                                .text(Model.GPT_5_MINI.getName())
+                                                .callbackData(Model.GPT_5_MINI.getName())
+                                                .build(),
+                                        InlineKeyboardButton
+                                                .builder()
+                                                .text(Model.GPT_5.getName())
+                                                .callbackData(Model.GPT_5.getName())
+                                                .build(),
+                                        InlineKeyboardButton
+                                                .builder()
+                                                .text(Model.GPT_5_CHAT.getName())
+                                                .callbackData(Model.GPT_5_CHAT.getName())
+                                                .build(),
+                                        InlineKeyboardButton
+                                                .builder()
+                                                .text(Model.GPT_5_2_CHAT.getName())
+                                                .callbackData(Model.GPT_5_2_CHAT.getName())
+                                                .build()
+                                )
                         )
                         .build())
                 .build());
@@ -282,7 +282,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .model(actualModel.getName())
                 .messages(messages)
                 .n(1)
-                .temperature(actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? null : temperature)
+                .temperature(actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 || actualModel == Model.GPT_5_2_CHAT ? null : temperature)
                 .stream(false)
                 .build();
     }
@@ -313,7 +313,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                             .text(escapedText.substring(index, index + 4096))
                             .build());
                 }
-                index+=4096;
+                index += 4096;
             }
         }
     }
