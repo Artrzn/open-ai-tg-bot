@@ -28,7 +28,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
     private final long ownerUserId;
     private final String botUserName;
     private double temperature = 0.7;
-    private Model actualModel = Model.GPT_5_2_CHAT;
+    private Model actualModel = Model.GPT_5_4;
     private boolean isUseContext;
     private final Function<Boolean, String> getContextState = b -> b ? "On" : "Off";
     private String actualRole = ChatMessageRole.USER.value();
@@ -80,8 +80,10 @@ public class ChatGptBot extends TelegramLongPollingBot {
                     if (isUseContext != newState) {
                         LOGGER.info("Context support state was change from: {} to: {}", getContextState.apply(isUseContext), getContextState.apply(newState));
                     }
-                    LOGGER.info("Clear messages");
-                    savedMessages.clear();
+                    if (callbackData.equals("false")) {
+                        LOGGER.info("Clear messages");
+                        savedMessages.clear();
+                    }
                     isUseContext = newState;
                 } else if (callbackData.equals("system") || callbackData.equals("user")) {
                     if (!actualRole.equals(callbackData)) {
@@ -96,7 +98,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                     LOGGER.info("Chosen model: {}.", actualModel.getName());
                 }
                 sendTextMessage(String.format("Режим контекста: %s. Роль: %s. Выбранная модель: %s%s", getContextState.apply(isUseContext),
-                        actualRole, actualModel.getName(), actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 || actualModel == Model.GPT_5_2_CHAT ? "" : String.format(" Температура: %s.", temperature)));
+                        actualRole, actualModel.getName(), actualModel.isTemperatureSupport() ? String.format(" Температура: %s.", temperature) : ""));
             }
         } catch (Throwable t) {
             LOGGER.error("Some error: ", t);
@@ -109,11 +111,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .text("Выбери модель")
                 .replyMarkup(InlineKeyboardMarkup
                         .builder()
-                        .keyboardRow(Arrays.asList(InlineKeyboardButton
-                                                .builder()
-                                                .text(Model.GPT_5_MINI.getName())
-                                                .callbackData(Model.GPT_5_MINI.getName())
-                                                .build(),
+                        .keyboardRow(Arrays.asList(
                                         InlineKeyboardButton
                                                 .builder()
                                                 .text(Model.GPT_5.getName())
@@ -121,13 +119,21 @@ public class ChatGptBot extends TelegramLongPollingBot {
                                                 .build(),
                                         InlineKeyboardButton
                                                 .builder()
-                                                .text(Model.GPT_5_CHAT.getName())
-                                                .callbackData(Model.GPT_5_CHAT.getName())
+                                                .text(Model.GPT_5_2_CHAT.getName())
+                                                .callbackData(Model.GPT_5_2_CHAT.getName())
+                                                .build()
+                                )
+                        )
+                        .keyboardRow(Arrays.asList(
+                                        InlineKeyboardButton
+                                                .builder()
+                                                .text(Model.GPT_5_3_CHAT.getName())
+                                                .callbackData(Model.GPT_5_3_CHAT.getName())
                                                 .build(),
                                         InlineKeyboardButton
                                                 .builder()
-                                                .text(Model.GPT_5_2_CHAT.getName())
-                                                .callbackData(Model.GPT_5_2_CHAT.getName())
+                                                .text(Model.GPT_5_4.getName())
+                                                .callbackData(Model.GPT_5_4.getName())
                                                 .build()
                                 )
                         )
@@ -249,12 +255,14 @@ public class ChatGptBot extends TelegramLongPollingBot {
 
     private void askOpenAi(String ask) throws TelegramApiException {
         sendTextMessage(String.format("Жди... использована модель: %s. Режим контекста: %s. Роль: %s.%s", actualModel.getName(),
-                getContextState.apply(isUseContext), actualRole, actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 ? "" : String.format(" Температура: %s.", temperature)));
+                getContextState.apply(isUseContext), actualRole, actualModel.isTemperatureSupport() ? String.format(" Температура: %s.", temperature) : ""));
 
-        List<ChatMessage> messages = isUseContext ? savedMessages : new ArrayList<>();
+        if (!isUseContext) {
+            savedMessages.clear();
+        }
         ChatMessage userMessage = new ChatMessage(actualRole, ask);
-        messages.add(userMessage);
-        ChatCompletionRequest chatCompletionRequest = buildRequest(messages);
+        savedMessages.add(userMessage);
+        ChatCompletionRequest chatCompletionRequest = buildRequest(savedMessages);
         StringBuilder answer = new StringBuilder();
         try {
             ChatCompletionResult chatCompletion = openAi.createChatCompletion(chatCompletionRequest);
@@ -270,9 +278,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
             sendTextMessage(String.format("Ошибка выполнения запроса к openAi. %s", e.getMessage()));
         }
         LOGGER.info("Accepted answer: {}", answer.toString());
-        if (isUseContext) {
-            messages.add(new ChatMessage(ChatMessageRole.ASSISTANT.value(), answer.toString()));
-        }
+        savedMessages.add(new ChatMessage(ChatMessageRole.ASSISTANT.value(), answer.toString()));
         sendTextMessage(answer.toString());
     }
 
@@ -282,7 +288,7 @@ public class ChatGptBot extends TelegramLongPollingBot {
                 .model(actualModel.getName())
                 .messages(messages)
                 .n(1)
-                .temperature(actualModel == Model.GPT_5_MINI || actualModel == Model.GPT_5 || actualModel == Model.GPT_5_2_CHAT ? null : temperature)
+                .temperature(actualModel.isTemperatureSupport() ? temperature : null)
                 .stream(false)
                 .build();
     }
